@@ -10,6 +10,10 @@ load_dotenv()
 # Initialize FastMCP server
 mcp = FastMCP("fitness")
 
+# Add OpenWeather constants
+OPENWEATHER_API_BASE = "https://api.openweathermap.org/data/2.5"
+OPENWEATHER_API_KEY = "a1873da14ab615fb26cfd2cebc294351"
+
 
 async def make_oura_request(url: str, params: Dict[str, Any]) -> dict[str, Any] | None:
     """Make a request to the OURA API with proper error handling."""
@@ -58,6 +62,72 @@ async def get_sleep_score() -> str:
     it captures how well the person slept."""
     result = await get_oura_data("daily_sleep", process_sleep_response)
     return result
+
+
+async def make_weather_request(url: str) -> dict[str, Any] | None:
+    """Make a request to the OpenWeather API with proper error handling."""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, timeout=30.0)
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            return None
+
+
+@mcp.tool()
+async def get_paris_weather() -> str:
+    """Get current weather conditions in Paris, France."""
+    url = f"{OPENWEATHER_API_BASE}/weather?q=Paris,FR&appid={OPENWEATHER_API_KEY}&units=metric"
+    
+    data = await make_weather_request(url)
+    if not data:
+        return "Unable to fetch weather data for Paris"
+        
+    try:
+        weather_desc = data['weather'][0]['description']
+        temp = data['main']['temp']
+        feels_like = data['main']['feels_like']
+        humidity = data['main']['humidity']
+        wind_speed = data['wind']['speed']
+        
+        return f"""
+Current Weather in Paris:
+Temperature: {temp}°C (Feels like {feels_like}°C)
+Conditions: {weather_desc.capitalize()}
+Humidity: {humidity}%
+Wind Speed: {wind_speed} m/s
+"""
+    except KeyError as e:
+        return f"Error processing weather data: {str(e)}"
+
+
+@mcp.tool()
+async def get_workout_recommendation() -> str:
+    """Get a personalized workout recommendation based on sleep quality and weather conditions."""
+    # Get sleep data
+    sleep_data = await get_sleep_score()
+    
+    # Get weather data
+    weather_data = await get_paris_weather()
+    
+    # Combine the data into a prompt for the AI to make a recommendation
+    context = f"""
+Based on the following data, suggest a suitable workout plan for today:
+
+Sleep Information:
+{sleep_data}
+
+Weather Information:
+{weather_data}
+
+Please provide a workout recommendation considering:
+1. Sleep quality (higher sleep scores allow for more intense workouts)
+2. Weather conditions (suggest indoor activities if weather is poor)
+3. Temperature (adjust intensity based on heat/cold)
+"""
+    
+    return context
 
 
 if __name__ == "__main__":
