@@ -27,12 +27,12 @@ async def make_oura_request(url: str, params: Dict[str, Any]) -> dict[str, Any] 
             return None
 
 
-def get_yesterday_and_today():
+def get_today_and_tomorrow():
     today = datetime.today()
-    yesterday = today + timedelta(days=-1)
+    tom = today + timedelta(days=1)
     formatted_today = today.strftime("%Y-%m-%d")
-    formatted_yesterday = yesterday.strftime("%Y-%m-%d")
-    return formatted_yesterday, formatted_today
+    formatted_tom = tom.strftime("%Y-%m-%d")
+    return formatted_today, formatted_tom
 
 
 def process_sleep_response(response: dict) -> str:
@@ -43,10 +43,28 @@ def process_sleep_response(response: dict) -> str:
     return formatted_response
 
 
-async def get_oura_data(data_type: str, processing_function: Callable):
+def process_activity_response(response: dict) -> str:
+    data = response["data"][0]
+    formatted_response = f"""
+    Here are the metrics so far for today:
+    
+    Calories burnt: {data["active_calories"]}
+    High activity minutes: {int(data['high_activity_time'])/60}
+    Medium activity minutes: {int(data['medium_activity_time'])/60}
+    Low activity minutes: {int(data['low_activity_time'])/60}
+    Sedentary minutes: {int(data['sedentary_time'])/60}
+    """
+    return formatted_response
+
+
+async def get_oura_data(data_type: str, processing_function: Callable, end_tomorrow: bool = False):
     url = f"https://api.ouraring.com/v2/usercollection/{data_type}"
-    _, today = get_yesterday_and_today()
-    params = {"start_date": today, "end_date": today}
+    today, tomorrow = get_today_and_tomorrow()
+    if end_tomorrow:
+        end_date = tomorrow
+    else:
+        end_date = today
+    params = {"start_date": today, "end_date": end_date}
     data = await make_oura_request(url, params)
 
     return processing_function(data)
@@ -57,6 +75,14 @@ async def get_sleep_score() -> str:
     """Get the person's sleep score from last night,
     it captures how well the person slept."""
     result = await get_oura_data("daily_sleep", process_sleep_response)
+    return result
+
+
+@mcp.tool()
+async def get_today_activity() -> str:
+    """Get information about the person's activity
+    so far for the day"""
+    result = await get_oura_data("daily_activity", process_activity_response, end_tomorrow=True)
     return result
 
 
