@@ -17,6 +17,7 @@ class MCPClient:
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic()
+        self.chat_history = []
 
     async def connect_to_server(self, server_script_path: str):
         """Connect to an MCP server
@@ -47,7 +48,7 @@ class MCPClient:
 
     async def process_query(self, query: str) -> str:
         """Process a query using Claude and available tools"""
-        messages = [{"role": "user", "content": query}]
+        messages = self.chat_history + [{"role": "user", "content": query}]
 
         response = await self.session.list_tools()
         available_tools = [
@@ -92,8 +93,9 @@ class MCPClient:
                 )
 
                 final_text.append(response.content[0].text)
-
-        return "\n".join(final_text)
+        final_response = "\n".join(final_text)
+        self.chat_history.append({"role": "assistant", "content": final_response})
+        return final_response
 
     async def chat_loop(self):
         """Run an interactive chat loop"""
